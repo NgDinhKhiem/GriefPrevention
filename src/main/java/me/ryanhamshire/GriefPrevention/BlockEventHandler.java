@@ -65,6 +65,7 @@ import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.hanging.HangingBreakEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.world.PortalCreateEvent;
@@ -1300,6 +1301,16 @@ public class BlockEventHandler implements Listener
         BoundingBox box = BoundingBox.ofStates(event.getBlocks());
         if (boxConflictsWithClaims(event.getWorld(), box, null, predicate))
         {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
+    private void onInventoryOpen(InventoryOpenEvent event){
+        Location location = event.getInventory().getLocation();
+        if(location==null) return;
+        Claim claim = GriefPrevention.instance.dataStore.getClaimAt(location, false, null);
+        if(claim.checkPermission((Player) event.getPlayer(), ClaimPermission.Manage, null)!=null){
             event.setCancelled(true);
         }
     }

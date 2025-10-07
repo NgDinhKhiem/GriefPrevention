@@ -54,6 +54,7 @@ import org.bukkit.entity.Tameable;
 import org.bukkit.entity.Vehicle;
 import org.bukkit.entity.minecart.PoweredMinecart;
 import org.bukkit.entity.minecart.StorageMinecart;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -1524,6 +1525,8 @@ class PlayerEventHandler implements Listener
                 Supplier<String> noAccessReason = claim.checkPermission(player, ClaimPermission.Build, event);
                 if (noAccessReason != null)
                 {
+                    event.setUseInteractedBlock(Event.Result.DENY);
+                    event.setUseItemInHand(Event.Result.DENY);
                     event.setCancelled(true);
                     return;
                 }
@@ -1572,6 +1575,8 @@ class PlayerEventHandler implements Listener
             if (playerData.inPvpCombat())
             {
                 GriefPrevention.sendMessage(player, TextMode.Err, Messages.PvPNoContainers);
+                event.setUseInteractedBlock(Event.Result.DENY);
+                event.setUseItemInHand(Event.Result.DENY);
                 event.setCancelled(true);
                 return;
             }
@@ -1585,6 +1590,8 @@ class PlayerEventHandler implements Listener
                 Supplier<String> noContainersReason = claim.checkPermission(player, ClaimPermission.Inventory, event);
                 if (noContainersReason != null)
                 {
+                    event.setUseInteractedBlock(Event.Result.DENY);
+                    event.setUseItemInHand(Event.Result.DENY);
                     event.setCancelled(true);
                     GriefPrevention.sendMessage(player, TextMode.Err, noContainersReason.get());
                     return;
@@ -1622,6 +1629,8 @@ class PlayerEventHandler implements Listener
                 Supplier<String> noAccessReason = claim.checkPermission(player, ClaimPermission.Access, event);
                 if (noAccessReason != null)
                 {
+                    event.setUseInteractedBlock(Event.Result.DENY);
+                    event.setUseItemInHand(Event.Result.DENY);
                     event.setCancelled(true);
                     GriefPrevention.sendMessage(player, TextMode.Err, noAccessReason.get());
                     return;
@@ -1641,6 +1650,8 @@ class PlayerEventHandler implements Listener
                 Supplier<String> noAccessReason = claim.checkPermission(player, ClaimPermission.Access, event);
                 if (noAccessReason != null)
                 {
+                    event.setUseInteractedBlock(Event.Result.DENY);
+                    event.setUseItemInHand(Event.Result.DENY);
                     event.setCancelled(true);
                     GriefPrevention.sendMessage(player, TextMode.Err, noAccessReason.get());
                     return;
@@ -1660,6 +1671,8 @@ class PlayerEventHandler implements Listener
                 Supplier<String> noContainerReason = claim.checkPermission(player, ClaimPermission.Access, event);
                 if (noContainerReason != null)
                 {
+                    event.setUseInteractedBlock(Event.Result.DENY);
+                    event.setUseItemInHand(Event.Result.DENY);
                     event.setCancelled(true);
                     GriefPrevention.sendMessage(player, TextMode.Err, noContainerReason.get());
                     return;
@@ -1687,6 +1700,8 @@ class PlayerEventHandler implements Listener
                 Supplier<String> noBuildReason = claim.checkPermission(player, ClaimPermission.Build, event);
                 if (noBuildReason != null)
                 {
+                    event.setUseInteractedBlock(Event.Result.DENY);
+                    event.setUseItemInHand(Event.Result.DENY);
                     event.setCancelled(true);
                     GriefPrevention.sendMessage(player, TextMode.Err, noBuildReason.get());
                     return;
@@ -1720,6 +1735,8 @@ class PlayerEventHandler implements Listener
                 if (noBuildReason != null)
                 {
                     GriefPrevention.sendMessage(player, TextMode.Err, noBuildReason.get());
+                    event.setUseInteractedBlock(Event.Result.DENY);
+                    event.setUseItemInHand(Event.Result.DENY);
                     event.setCancelled(true);
                 }
 
@@ -1735,6 +1752,8 @@ class PlayerEventHandler implements Listener
                     if (reason != null)
                     {
                         GriefPrevention.sendMessage(player, TextMode.Err, reason.get());
+                        event.setUseInteractedBlock(Event.Result.DENY);
+                        event.setUseItemInHand(Event.Result.DENY);
                         event.setCancelled(true);
                     }
                 }
@@ -1759,6 +1778,8 @@ class PlayerEventHandler implements Listener
                     if (reason != null)
                     {
                         GriefPrevention.sendMessage(player, TextMode.Err, reason.get());
+                        event.setUseInteractedBlock(Event.Result.DENY);
+                        event.setUseItemInHand(Event.Result.DENY);
                         event.setCancelled(true);
                     }
                 }
@@ -1880,6 +1901,8 @@ class PlayerEventHandler implements Listener
             //if it's a golden shovel
             else if (materialInHand != instance.config_claims_modificationTool || hand != EquipmentSlot.HAND) return;
 
+            event.setUseInteractedBlock(Event.Result.DENY);
+            event.setUseItemInHand(Event.Result.DENY);
             event.setCancelled(true);  //GriefPrevention exclusively reserves this tool  (e.g. no grass path creation for golden shovel)
 
             //FEATURE: shovel and stick can be used from a distance away
