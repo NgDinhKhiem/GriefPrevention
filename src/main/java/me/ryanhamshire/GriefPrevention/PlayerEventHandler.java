@@ -1608,7 +1608,7 @@ class PlayerEventHandler implements Listener
         }
 
         //otherwise apply rules for doors and beds, if configured that way
-        else if (clickedBlock != null &&
+        else if (clickedBlock != null && action == Action.RIGHT_CLICK_BLOCK &&
 
                 (instance.config_claims_lockWoodenDoors && Tag.DOORS.isTagged(clickedBlockType) ||
 
@@ -1639,7 +1639,7 @@ class PlayerEventHandler implements Listener
         }
 
         //otherwise apply rules for buttons and switches
-        else if (clickedBlock != null && instance.config_claims_preventButtonsSwitches && (Tag.BUTTONS.isTagged(clickedBlockType) || clickedBlockType == Material.LEVER))
+        else if (clickedBlock != null && action == Action.RIGHT_CLICK_BLOCK && instance.config_claims_preventButtonsSwitches && (Tag.BUTTONS.isTagged(clickedBlockType) || clickedBlockType == Material.LEVER))
         {
             if (playerData == null) playerData = this.dataStore.getPlayerData(player.getUniqueId());
             Claim claim = this.dataStore.getClaimAt(clickedBlock.getLocation(), false, playerData.lastClaim);
@@ -1660,7 +1660,7 @@ class PlayerEventHandler implements Listener
         }
 
         //otherwise apply rule for cake
-        else if (clickedBlock != null && instance.config_claims_preventTheft && (clickedBlockType == Material.CAKE || Tag.CANDLE_CAKES.isTagged(clickedBlockType)))
+        else if (clickedBlock != null && action == Action.RIGHT_CLICK_BLOCK && instance.config_claims_preventTheft && (clickedBlockType == Material.CAKE || Tag.CANDLE_CAKES.isTagged(clickedBlockType)))
         {
             if (playerData == null) playerData = this.dataStore.getPlayerData(player.getUniqueId());
             Claim claim = this.dataStore.getClaimAt(clickedBlock.getLocation(), false, playerData.lastClaim);
@@ -1681,7 +1681,7 @@ class PlayerEventHandler implements Listener
         }
 
         //apply rule for redstone and various decor blocks that require full trust
-        else if (clickedBlock != null &&
+        else if (clickedBlock != null && action == Action.RIGHT_CLICK_BLOCK &&
                 (
                         clickedBlockType == Material.NOTE_BLOCK ||
                                 clickedBlockType == Material.REPEATER ||
