@@ -18,7 +18,6 @@
 
 package me.ryanhamshire.GriefPrevention;
 
-import com.griefprevention.protection.ProtectionHelper;
 import me.ryanhamshire.GriefPrevention.events.ProtectDeathDropsEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.ExplosionResult;
@@ -43,7 +42,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockExplodeEvent;
-import org.bukkit.event.block.CauldronLevelChangeEvent;
 import org.bukkit.event.block.EntityBlockFormEvent;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason;
@@ -53,6 +51,8 @@ import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityInteractEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.EntityPortalEnterEvent;
+import org.bukkit.event.entity.EntityPortalExitEvent;
 import org.bukkit.event.entity.ExpBottleEvent;
 import org.bukkit.event.entity.ItemMergeEvent;
 import org.bukkit.event.entity.ItemSpawnEvent;
@@ -93,10 +93,14 @@ public class EntityEventHandler implements Listener
     public void onEntityFormBlock(EntityBlockFormEvent event)
     {
         Entity entity = event.getEntity();
-        if (entity instanceof Player player
-                && ProtectionHelper.checkPermission(player, event.getBlock().getLocation(), ClaimPermission.Build, event) != null)
+        if (entity.getType() == EntityType.PLAYER)
         {
-            event.setCancelled(true);
+            Player player = (Player) event.getEntity();
+            String noBuildReason = GriefPrevention.instance.allowBuild(player, event.getBlock().getLocation(), event.getNewState().getType());
+            if (noBuildReason != null)
+            {
+                event.setCancelled(true);
+            }
         }
     }
 
@@ -119,11 +123,6 @@ public class EntityEventHandler implements Listener
         {
             event.setCancelled(true);
         }
-        //sand cannon fix - when the falling block doesn't fall straight down, take additional anti-grief steps
-        else if (event.getEntity() instanceof FallingBlock fallingBlock)
-        {
-            handleFallingBlockChangeBlock(event, fallingBlock);
-        }
         // All other handling depends on claims being enabled.
         else if (GriefPrevention.instance.config_claims_worldModes.get(event.getBlock().getWorld()) == ClaimsMode.Disabled)
         {
@@ -139,23 +138,26 @@ public class EntityEventHandler implements Listener
         else if (event.getEntityType() == EntityType.WITHER)
         {
             Claim claim = this.dataStore.getClaimAt(event.getBlock().getLocation(), false, null);
-            if (claim == null || !claim.areExplosivesAllowed || !GriefPrevention.instance.config_blockClaimExplosions)
-            {
-                event.setCancelled(true);
+            if(claim != null) {
+                if (!claim.areExplosivesAllowed || !GriefPrevention.instance.config_blockClaimExplosions)
+                {
+                    event.setCancelled(true);
+                }
             }
         }
 
         //don't allow crops to be trampled, except by a player with build permission
         else if (event.getTo() == Material.DIRT && event.getBlock().getType() == Material.FARMLAND)
         {
-            if (!(event.getEntity() instanceof Player player))
+            if (event.getEntityType() != EntityType.PLAYER)
             {
                 event.setCancelled(true);
             }
             else
             {
+                Player player = (Player) event.getEntity();
                 Block block = event.getBlock();
-                if (ProtectionHelper.checkPermission(player, block.getLocation(), ClaimPermission.Build, event) != null)
+                if (GriefPrevention.instance.allowBreak(player, block, block.getLocation()) != null)
                 {
                     event.setCancelled(true);
                 }
@@ -172,88 +174,71 @@ public class EntityEventHandler implements Listener
         else if (event.getEntity() instanceof Vehicle && !event.getEntity().getPassengers().isEmpty())
         {
             Entity driver = event.getEntity().getPassengers().get(0);
-            if (driver instanceof Player player)
+            if (driver instanceof Player)
             {
                 Block block = event.getBlock();
-                if (ProtectionHelper.checkPermission(player, block.getLocation(), ClaimPermission.Build, event) != null)
+                if (GriefPrevention.instance.allowBreak((Player) driver, block, block.getLocation()) != null)
                 {
                     event.setCancelled(true);
                 }
             }
         }
-    }
 
-    private void handleFallingBlockChangeBlock(EntityChangeBlockEvent event, FallingBlock fallingBlock)
-    {
-        Block block = event.getBlock();
-        Location blockLocation = block.getLocation();
-
-        //if changing a block TO air, this is when the falling block formed.  note its original location
-        if (event.getTo() == Material.AIR)
+        //sand cannon fix - when the falling block doesn't fall straight down, take additional anti-grief steps
+        else if (event.getEntityType() == EntityType.FALLING_BLOCK)
         {
-            fallingBlock.setMetadata("GP_FALLINGBLOCK", new FixedMetadataValue(GriefPrevention.instance, blockLocation));
-            return;
-        }
+            FallingBlock entity = (FallingBlock) event.getEntity();
+            Block block = event.getBlock();
 
-        // Otherwise, the falling block is forming a block.
-
-        ClaimsMode claimsMode = GriefPrevention.instance.config_claims_worldModes.get(block.getWorld());
-        // If claims are disabled, the block is always allowed to form.
-        if (claimsMode == ClaimsMode.Disabled) return;
-
-        List<MetadataValue> values = fallingBlock.getMetadata("GP_FALLINGBLOCK");
-        //if we're not sure where this entity came from (maybe another plugin didn't follow the standard?), allow the block to form
-        if (values.isEmpty() || !(values.get(0).value() instanceof Location originalLocation)) return;
-
-        // If it fell straight down, allow.
-        if (Objects.equals(originalLocation.getWorld(), block.getWorld())
-                && originalLocation.getBlockX() == blockLocation.getBlockX()
-                && originalLocation.getBlockZ() == blockLocation.getBlockZ())
-        {
-            return;
-        }
-
-        //in creative mode worlds, never form the block
-        if (claimsMode == ClaimsMode.Creative)
-        {
-            event.setCancelled(true);
-            fallingBlock.remove();
-            return;
-        }
-
-        //in other worlds, if landing in land claim, only allow if source was also in the land claim
-        Claim claim = this.dataStore.getClaimAt(blockLocation, false, null);
-
-        // If landing in a claim...
-        if (claim != null)
-        {
-            // If the claim contains the formation point, allow block to form.
-            if (claim.contains(originalLocation, false, false)) return;
-
-            // If the claim is an unrestricted subclaim and the block is from
-            // within the parent (but not another subclaim!) block may form.
-            if (claim.parent != null && !claim.getSubclaimRestrictions() && claim.parent.contains(originalLocation, false, true))
+            //if changing a block TO air, this is when the falling block formed.  note its original location
+            if (event.getTo() == Material.AIR)
             {
-                return;
+                entity.setMetadata("GP_FALLINGBLOCK", new FixedMetadataValue(GriefPrevention.instance, block.getLocation()));
+            }
+            //otherwise, the falling block is forming a block.  compare new location to original source
+            else
+            {
+                List<MetadataValue> values = entity.getMetadata("GP_FALLINGBLOCK");
+                //if we're not sure where this entity came from (maybe another plugin didn't follow the standard?), allow the block to form
+                //Or if entity fell through an end portal, allow it to form, as the event is erroneously fired twice in this scenario.
+                if (values.size() < 1) return;
+
+                Location originalLocation = (Location) (values.get(0).value());
+                Location newLocation = block.getLocation();
+
+                //if did not fall straight down
+                if (originalLocation.getBlockX() != newLocation.getBlockX() || originalLocation.getBlockZ() != newLocation.getBlockZ())
+                {
+                    //in creative mode worlds, never form the block
+                    if (GriefPrevention.instance.config_claims_worldModes.get(newLocation.getWorld()) == ClaimsMode.Creative)
+                    {
+                        event.setCancelled(true);
+                        entity.remove();
+                        return;
+                    }
+
+                    //in other worlds, if landing in land claim, only allow if source was also in the land claim
+                    Claim claim = this.dataStore.getClaimAt(newLocation, false, null);
+                    if (claim != null && !claim.contains(originalLocation, false, false))
+                    {
+                        //when not allowed, drop as item instead of forming a block
+                        event.setCancelled(true);
+
+                        // Just in case, skip already dead entities.
+                        if (entity.isDead())
+                        {
+                            return;
+                        }
+
+                        // Remove entity so it doesn't continuously spawn drops.
+                        entity.remove();
+
+                        ItemStack itemStack = new ItemStack(entity.getBlockData().getMaterial(), 1);
+                        block.getWorld().dropItemNaturally(entity.getLocation(), itemStack);
+                    }
+                }
             }
         }
-        // If not landing in a claim and claims are not required, allow block to form.
-        else if (claimsMode == ClaimsMode.Survival) return;
-
-        //when not allowed, drop as item instead of forming a block
-        event.setCancelled(true);
-
-        // Just in case, skip already dead entities.
-        if (fallingBlock.isDead())
-        {
-            return;
-        }
-
-        // Remove entity so it doesn't continuously spawn drops.
-        fallingBlock.remove();
-
-        ItemStack itemStack = new ItemStack(fallingBlock.getBlockData().getMaterial(), 1);
-        block.getWorld().dropItemNaturally(fallingBlock.getLocation(), itemStack);
     }
 
     private void handleProjectileChangeBlock(EntityChangeBlockEvent event, Projectile projectile)
@@ -326,7 +311,7 @@ public class EntityEventHandler implements Listener
         if (player != null)
         {
             Block block = event.getBlock();
-            if (ProtectionHelper.checkPermission(player, block.getLocation(), ClaimPermission.Build, event) != null)
+            if (GriefPrevention.instance.allowBreak(player, block, block.getLocation()) != null)
             {
                 event.setCancelled(true);
             }
@@ -343,6 +328,16 @@ public class EntityEventHandler implements Listener
     {
         return projectileSource instanceof BlockProjectileSource &&
                 GriefPrevention.instance.dataStore.getClaimAt(((BlockProjectileSource) projectileSource).getBlock().getLocation(), false, claim) == claim;
+    }
+
+    //Used by "sand cannon" fix to ignore fallingblocks that fell through End Portals
+    //This is largely due to a CB issue with the above event
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+    public void onFallingBlockEnterPortal(EntityPortalEnterEvent event)
+    {
+        if (event.getEntityType() != EntityType.FALLING_BLOCK)
+            return;
+        event.getEntity().removeMetadata("GP_FALLINGBLOCK", instance);
     }
 
     //don't allow zombies to break down doors
@@ -510,6 +505,15 @@ public class EntityEventHandler implements Listener
                 continue;
             }
 
+            //if claim is under siege, allow soft blocks to be destroyed
+            if (claim != null && claim.siegeData != null)
+            {
+                Material material = block.getType();
+                boolean breakable = GriefPrevention.instance.config_siege_blocks.contains(material);
+
+                if (breakable) continue;
+            }
+
             //if no, then also consider surface rules
             if (claim == null)
             {
@@ -605,9 +609,9 @@ public class EntityEventHandler implements Listener
             return;
         }
 
-        //otherwise, no spawning in the wilderness!
+        //otherwise, just apply the limit on total entities per claim (and no spawning in the wilderness!)
         Claim claim = this.dataStore.getClaimAt(event.getLocation(), false, null);
-        if (claim == null)
+        if (claim == null || claim.allowMoreEntities(true) != null)
         {
             event.setCancelled(true);
             return;
@@ -630,13 +634,23 @@ public class EntityEventHandler implements Listener
             event.getDrops().clear();
         }
 
-        //FEATURE: lock dropped items to player who dropped them
-        if (!(entity instanceof Player player))
+        //FEATURE: when a player is involved in a siege (attacker or defender role)
+        //his death will end the siege
+
+        if (entity.getType() != EntityType.PLAYER) return;  //only tracking players
+
+        Player player = (Player) entity;
+        PlayerData playerData = this.dataStore.getPlayerData(player.getUniqueId());
+
+        //if involved in a siege
+        if (playerData.siegeData != null)
         {
-            return;
+            //end it, with the dieing player being the loser
+            this.dataStore.endSiege(playerData.siegeData, null, player.getName(), event.getDrops());
         }
 
-        PlayerData playerData = this.dataStore.getPlayerData(player.getUniqueId());
+        //FEATURE: lock dropped items to player who dropped them
+
         World world = entity.getWorld();
 
         //decide whether or not to apply this feature to this situation (depends on the world where it happens)
@@ -672,7 +686,7 @@ public class EntityEventHandler implements Listener
     {
         Item item = event.getEntity();
         List<MetadataValue> data = item.getMetadata("GP_ITEMOWNER");
-        event.setCancelled(!data.isEmpty());
+        event.setCancelled(data != null && data.size() > 0);
     }
 
     //when an entity picks up an item
@@ -713,28 +727,31 @@ public class EntityEventHandler implements Listener
         }
 
         //only allow players to break paintings, not anything else (like water and explosions)
-        if (!(event instanceof HangingBreakByEntityEvent entityEvent))
+        if (!(event instanceof HangingBreakByEntityEvent))
         {
             event.setCancelled(true);
             return;
         }
 
+        HangingBreakByEntityEvent entityEvent = (HangingBreakByEntityEvent) event;
+
         //who is removing it?
         Entity remover = entityEvent.getRemover();
 
         //again, making sure the breaker is a player
-        if (!(remover instanceof Player playerRemover))
+        if (remover.getType() != EntityType.PLAYER)
         {
             event.setCancelled(true);
             return;
         }
 
         //if the player doesn't have build permission, don't allow the breakage
-        Supplier<String> noBuildReason = ProtectionHelper.checkPermission(playerRemover, event.getEntity().getLocation(), ClaimPermission.Build, event);
+        Player playerRemover = (Player) entityEvent.getRemover();
+        String noBuildReason = GriefPrevention.instance.allowBuild(playerRemover, event.getEntity().getLocation(), Material.AIR);
         if (noBuildReason != null)
         {
             event.setCancelled(true);
-            GriefPrevention.sendMessage(playerRemover, TextMode.Err, noBuildReason.get());
+            GriefPrevention.sendMessage(playerRemover, TextMode.Err, noBuildReason);
         }
     }
 
@@ -744,17 +761,32 @@ public class EntityEventHandler implements Listener
     {
         //don't track in worlds where claims are not enabled
         if (!GriefPrevention.instance.claimsEnabledForWorld(event.getBlock().getWorld())) return;
-        if (event.getPlayer() == null) return;
 
         //FEATURE: similar to above, placing a painting requires build permission in the claim
 
         //if the player doesn't have permission, don't allow the placement
-        Supplier<String> noBuildReason = ProtectionHelper.checkPermission(event.getPlayer(), event.getEntity().getLocation(), ClaimPermission.Build, event);
+        String noBuildReason = GriefPrevention.instance.allowBuild(event.getPlayer(), event.getEntity().getLocation(), Material.PAINTING);
         if (noBuildReason != null)
         {
             event.setCancelled(true);
-            GriefPrevention.sendMessage(event.getPlayer(), TextMode.Err, noBuildReason.get());
+            GriefPrevention.sendMessage(event.getPlayer(), TextMode.Err, noBuildReason);
             return;
+        }
+
+        //otherwise, apply entity-count limitations for creative worlds
+        else if (GriefPrevention.instance.creativeRulesApply(event.getEntity().getLocation()))
+        {
+            PlayerData playerData = this.dataStore.getPlayerData(event.getPlayer().getUniqueId());
+            Claim claim = this.dataStore.getClaimAt(event.getBlock().getLocation(), false, playerData.lastClaim);
+            if (claim == null) return;
+
+            String noEntitiesReason = claim.allowMoreEntities(false);
+            if (noEntitiesReason != null)
+            {
+                GriefPrevention.sendMessage(event.getPlayer(), TextMode.Err, noEntitiesReason);
+                event.setCancelled(true);
+                return;
+            }
         }
     }
 
@@ -775,26 +807,6 @@ public class EntityEventHandler implements Listener
 
         // FEATURE: Protect freshly-spawned players from PVP.
         preventPvpSpawnCamp(event, player);
-    }
-
-    @EventHandler
-    public void onCauldron(@NotNull CauldronLevelChangeEvent event)
-    {
-        //don't track in worlds where claims are not enabled
-        if (!GriefPrevention.instance.claimsEnabledForWorld(event.getBlock().getWorld())) return;
-
-        // Check if the entity is a player
-        Entity entity = event.getEntity();
-        if (entity == null) return;
-        if (!(entity instanceof Player player)) return;
-
-        //if the player doesn't have build permission, don't allow the interaction
-        Supplier<String> noBuildReason = ProtectionHelper.checkPermission(player, player.getLocation(), ClaimPermission.Build, event);
-        if (noBuildReason != null)
-        {
-            event.setCancelled(true);
-            GriefPrevention.sendMessage(player, TextMode.Err, noBuildReason.get());
-        }
     }
 
     private void protectLockedDrops(@NotNull EntityPickupItemEvent event, @Nullable Player player)

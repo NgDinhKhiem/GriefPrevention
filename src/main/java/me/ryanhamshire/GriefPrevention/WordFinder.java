@@ -10,7 +10,7 @@ class WordFinder
 
     WordFinder(List<String> wordsToFind)
     {
-        if (wordsToFind.isEmpty()) return;
+        if (wordsToFind.size() == 0) return;
 
         StringBuilder patternBuilder = new StringBuilder();
         for (String word : wordsToFind)

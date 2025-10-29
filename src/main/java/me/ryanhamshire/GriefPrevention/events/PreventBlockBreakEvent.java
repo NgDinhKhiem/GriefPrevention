@@ -7,10 +7,9 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * @deprecated Listen to {@link ClaimPermissionCheckEvent} and check if
- * {@link ClaimPermissionCheckEvent#getTriggeringEvent()} {@code instanceof} {@link BlockBreakEvent}.
+ * An {@link Event} called when GriefPrevention prevents a {@link BlockBreakEvent}.
+ * If cancelled, GriefPrevention will allow the event to complete normally.
  */
-@Deprecated(forRemoval = true, since = "17.0.0")
 public class PreventBlockBreakEvent extends Event implements Cancellable
 {
     private final @NotNull BlockBreakEvent innerEvent;

@@ -15,6 +15,8 @@ public enum VisualizationType
     /** Boundaries for a new claim area. */
     INITIALIZE_ZONE,
     /** Boundaries for a conflicting area. */
-    CONFLICT_ZONE
+    CONFLICT_ZONE,
+    /** Boundaries for area in which nature has been restored. */
+    NATURE_RESTORATION_ZONE
 
 }

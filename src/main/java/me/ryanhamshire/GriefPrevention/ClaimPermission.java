@@ -28,25 +28,22 @@ public enum ClaimPermission
      */
     Edit(Messages.OnlyOwnersModifyClaims),
     /**
-     * ClaimPermission that allows users to grant ClaimPermissions. Grants {@link #Build}, {@link #Inventory}, and {@link #Access}.
-     * Command: /permissiontrust or /managetrust
-     */
-    Manage(Messages.NoPermissionTrust),
-    /**
      * ClaimPermission used for building checks. Grants {@link #Inventory} and {@link #Access}.
-     * Command: /trust
      */
     Build(Messages.NoBuildPermission),
     /**
-     * ClaimPermission used for inventory management, such as containers and farming. Grants {@link #Access}.
-     * Command: /containertrust
+     * ClaimPermission used for inventory management checks. Grants {@link #Access}.
      */
     Inventory(Messages.NoContainersPermission),
     /**
      * ClaimPermission used for basic access.
-     * Command: /accesstrust
      */
-    Access(Messages.NoAccessPermission);
+    Access(Messages.NoAccessPermission),
+    /**
+     * ClaimPermission that allows users to grant ClaimPermissions. Uses a separate track from normal
+     * permissions and does not grant any other permissions.
+     */
+    Manage(Messages.NoPermissionTrust);
 
     private final Messages denialMessage;
 
@@ -71,6 +68,7 @@ public enum ClaimPermission
      */
     public boolean isGrantedBy(ClaimPermission other)
     {
+        if (other == Manage || this == Manage) return other == this || other == Edit;
         // This uses declaration order to compare! If trust levels are reordered this method must be rewritten.
         return other != null && other.ordinal() <= this.ordinal();
     }

@@ -18,13 +18,16 @@
 
 package me.ryanhamshire.GriefPrevention;
 
-//enumeration for golden shovel modes
-public enum ShovelMode
+public class CustomizableMessage
 {
-    Basic,
-    Admin,
-    Subdivide,
-    RestoreNature,
-    RestoreNatureAggressive,
-    RestoreNatureFill
+    public Messages id;
+    public String text;
+    public String notes;
+
+    public CustomizableMessage(Messages id, String text, String notes)
+    {
+        this.id = id;
+        this.text = text;
+        this.notes = notes;
+    }
 }

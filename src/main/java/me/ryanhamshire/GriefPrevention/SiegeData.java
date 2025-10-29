@@ -18,13 +18,23 @@
 
 package me.ryanhamshire.GriefPrevention;
 
-//enumeration for golden shovel modes
-public enum ShovelMode
+import org.bukkit.entity.Player;
+
+import java.util.ArrayList;
+
+//information about an ongoing siege
+public class SiegeData
 {
-    Basic,
-    Admin,
-    Subdivide,
-    RestoreNature,
-    RestoreNatureAggressive,
-    RestoreNatureFill
+    public Player defender;
+    public Player attacker;
+    public ArrayList<Claim> claims;
+    public int checkupTaskID;
+
+    public SiegeData(Player attacker, Player defender, Claim claim)
+    {
+        this.defender = defender;
+        this.attacker = attacker;
+        this.claims = new ArrayList<>();
+        this.claims.add(claim);
+    }
 }

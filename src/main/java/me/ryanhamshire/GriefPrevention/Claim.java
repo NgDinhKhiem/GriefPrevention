@@ -25,6 +25,10 @@ import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.World.Environment;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
@@ -91,6 +95,9 @@ public class Claim
     //note subdivisions themselves never have children
     public ArrayList<Claim> children = new ArrayList<>();
 
+    //information about a siege involving this claim.  null means no siege is impacting this claim
+    public SiegeData siegeData = null;
+
     //following a siege, buttons/levers are unlocked temporarily.  this represents that state
     public boolean doorsOpen = false;
 
@@ -112,6 +119,97 @@ public class Claim
     Claim()
     {
         this.modifiedDate = Calendar.getInstance().getTime();
+    }
+
+    //players may only siege someone when he's not in an admin claim
+    //and when he has some level of permission in the claim
+    public boolean canSiege(Player defender)
+    {
+        if (this.isAdminClaim()) return false;
+
+        if (this.checkPermission(defender, ClaimPermission.Access, null) != null) return false;
+
+        return true;
+    }
+
+    //removes any lava above sea level in a claim
+    //exclusionClaim is another claim indicating an sub-area to be excluded from this operation
+    //it may be null
+    public void removeSurfaceFluids(Claim exclusionClaim)
+    {
+        //don't do this for administrative claims
+        if (this.isAdminClaim()) return;
+
+        //don't do it for very large claims
+        if (this.getArea() > 10000) return;
+
+        //only in creative mode worlds
+        if (!GriefPrevention.instance.creativeRulesApply(this.lesserBoundaryCorner)) return;
+
+        Location lesser = this.getLesserBoundaryCorner();
+        Location greater = this.getGreaterBoundaryCorner();
+
+        if (lesser.getWorld().getEnvironment() == Environment.NETHER) return;  //don't clean up lava in the nether
+
+        int seaLevel = 0;  //clean up all fluids in the end
+
+        //respect sea level in normal worlds
+        if (lesser.getWorld().getEnvironment() == Environment.NORMAL)
+            seaLevel = GriefPrevention.instance.getSeaLevel(lesser.getWorld());
+
+        for (int x = lesser.getBlockX(); x <= greater.getBlockX(); x++)
+        {
+            for (int z = lesser.getBlockZ(); z <= greater.getBlockZ(); z++)
+            {
+                for (int y = seaLevel - 1; y <= lesser.getWorld().getMaxHeight(); y++)
+                {
+                    //dodge the exclusion claim
+                    Block block = lesser.getWorld().getBlockAt(x, y, z);
+                    if (exclusionClaim != null && exclusionClaim.contains(block.getLocation(), true, false)) continue;
+
+                    if (block.getType() == Material.LAVA || block.getType() == Material.WATER)
+                    {
+                        block.setType(Material.AIR);
+                    }
+                }
+            }
+        }
+    }
+
+    //determines whether or not a claim has surface lava
+    //used to warn players when they abandon their claims about automatic fluid cleanup
+    boolean hasSurfaceFluids()
+    {
+        Location lesser = this.getLesserBoundaryCorner();
+        Location greater = this.getGreaterBoundaryCorner();
+
+        //don't bother for very large claims, too expensive
+        if (this.getArea() > 10000) return false;
+
+        int seaLevel = 0;  //clean up all fluids in the end
+
+        //respect sea level in normal worlds
+        if (lesser.getWorld().getEnvironment() == Environment.NORMAL)
+            seaLevel = GriefPrevention.instance.getSeaLevel(lesser.getWorld());
+
+        for (int x = lesser.getBlockX(); x <= greater.getBlockX(); x++)
+        {
+            for (int z = lesser.getBlockZ(); z <= greater.getBlockZ(); z++)
+            {
+                for (int y = seaLevel - 1; y <= lesser.getWorld().getMaxHeight(); y++)
+                {
+                    //dodge the exclusion claim
+                    Block block = lesser.getWorld().getBlockAt(x, y, z);
+
+                    if (block.getType() == Material.WATER || block.getType() == Material.LAVA)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     //main constructor.  note that only creating a claim instance does nothing - a claim must be added to the data store to be effective
@@ -193,6 +291,7 @@ public class Claim
         this.parent = claim.parent;
         this.inheritNothing = claim.inheritNothing;
         this.children = new ArrayList<>(claim.children);
+        this.siegeData = claim.siegeData;
         this.doorsOpen = claim.doorsOpen;
     }
 
@@ -751,17 +850,76 @@ public class Claim
         return new BoundingBox(this).intersects(new BoundingBox(otherClaim));
     }
 
-    @Deprecated(since = "17.0.0", forRemoval = true)
-    @Contract("_ -> null")
-    public @Nullable String allowMoreEntities(boolean remove)
+    //whether more entities may be added to a claim
+    public String allowMoreEntities(boolean remove)
     {
+        if (this.parent != null) return this.parent.allowMoreEntities(remove);
+
+        //this rule only applies to creative mode worlds
+        if (!GriefPrevention.instance.creativeRulesApply(this.getLesserBoundaryCorner())) return null;
+
+        //admin claims aren't restricted
+        if (this.isAdminClaim()) return null;
+
+        //don't apply this rule to very large claims
+        if (this.getArea() > 10000) return null;
+
+        //determine maximum allowable entity count, based on claim size
+        int maxEntities = this.getArea() / 50;
+        if (maxEntities == 0) return GriefPrevention.instance.dataStore.getMessage(Messages.ClaimTooSmallForEntities);
+
+        //count current entities (ignoring players)
+        int totalEntities = 0;
+        ArrayList<Chunk> chunks = this.getChunks();
+        for (Chunk chunk : chunks)
+        {
+            Entity[] entities = chunk.getEntities();
+            for (Entity entity : entities)
+            {
+                if (!(entity instanceof Player) && this.contains(entity.getLocation(), false, false))
+                {
+                    totalEntities++;
+                    if (remove && totalEntities > maxEntities) entity.remove();
+                }
+            }
+        }
+
+        if (totalEntities >= maxEntities)
+            return GriefPrevention.instance.dataStore.getMessage(Messages.TooManyEntitiesInClaim);
+
         return null;
     }
 
-    @Deprecated(since = "17.0.0", forRemoval = true)
-    @Contract("-> null")
-    public @Nullable String allowMoreActiveBlocks()
+    public String allowMoreActiveBlocks()
     {
+        if (this.parent != null) return this.parent.allowMoreActiveBlocks();
+
+        //determine maximum allowable entity count, based on claim size
+        int maxActives = this.getArea() / 100;
+        if (maxActives == 0)
+            return GriefPrevention.instance.dataStore.getMessage(Messages.ClaimTooSmallForActiveBlocks);
+
+        //count current actives
+        int totalActives = 0;
+        ArrayList<Chunk> chunks = this.getChunks();
+        for (Chunk chunk : chunks)
+        {
+            BlockState[] actives = chunk.getTileEntities();
+            for (BlockState active : actives)
+            {
+                if (BlockEventHandler.isActiveBlock(active))
+                {
+                    if (this.contains(active.getLocation(), false, false))
+                    {
+                        totalActives++;
+                    }
+                }
+            }
+        }
+
+        if (totalActives >= maxActives)
+            return GriefPrevention.instance.dataStore.getMessage(Messages.TooManyActiveBlocksInClaim);
+
         return null;
     }
 
@@ -782,6 +940,63 @@ public class Claim
         return thisCorner.getWorld().getName().compareTo(otherCorner.getWorld().getName()) < 0;
     }
 
+
+    long getPlayerInvestmentScore()
+    {
+        //decide which blocks will be considered player placed
+        Location lesserBoundaryCorner = this.getLesserBoundaryCorner();
+        Set<Material> playerBlocks = RestoreNatureProcessingTask.getPlayerBlocks(lesserBoundaryCorner.getWorld().getEnvironment(), lesserBoundaryCorner.getBlock().getBiome());
+
+        //scan the claim for player placed blocks
+        double score = 0;
+
+        boolean creativeMode = GriefPrevention.instance.creativeRulesApply(lesserBoundaryCorner);
+
+        for (int x = this.lesserBoundaryCorner.getBlockX(); x <= this.greaterBoundaryCorner.getBlockX(); x++)
+        {
+            for (int z = this.lesserBoundaryCorner.getBlockZ(); z <= this.greaterBoundaryCorner.getBlockZ(); z++)
+            {
+                int y = this.lesserBoundaryCorner.getBlockY();
+                for (; y < GriefPrevention.instance.getSeaLevel(this.lesserBoundaryCorner.getWorld()) - 5; y++)
+                {
+                    Block block = this.lesserBoundaryCorner.getWorld().getBlockAt(x, y, z);
+                    if (playerBlocks.contains(block.getType()))
+                    {
+                        if (block.getType() == Material.CHEST && !creativeMode)
+                        {
+                            score += 10;
+                        }
+                        else
+                        {
+                            score += .5;
+                        }
+                    }
+                }
+
+                for (; y < this.lesserBoundaryCorner.getWorld().getMaxHeight(); y++)
+                {
+                    Block block = this.lesserBoundaryCorner.getWorld().getBlockAt(x, y, z);
+                    if (playerBlocks.contains(block.getType()))
+                    {
+                        if (block.getType() == Material.CHEST && !creativeMode)
+                        {
+                            score += 10;
+                        }
+                        else if (creativeMode && (block.getType() == Material.LAVA))
+                        {
+                            score -= 10;
+                        }
+                        else
+                        {
+                            score += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        return (long) score;
+    }
 
     public ArrayList<Chunk> getChunks()
     {

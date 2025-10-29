@@ -54,6 +54,9 @@ public class PlayerData
     //what "mode" the shovel is in determines what it will do when it's used
     public ShovelMode shovelMode = ShovelMode.Basic;
 
+    //radius for restore nature fill mode
+    int fillRadius = 0;
+
     //last place the player used the shovel, useful in creating and resizing claims,
     //because the player must use the shovel twice in those instances
     public Location lastShovelLocation = null;
@@ -69,6 +72,9 @@ public class PlayerData
 
     //whether this player was recently warned about building outside land claims
     boolean warnedAboutBuildingOutsideClaims = false;
+
+    //timestamp when last siege ended (where this player was the defender)
+    long lastSiegeEndTimeStamp = 0;
 
     //whether the player was kicked (set and used during logout)
     boolean wasKicked = false;
@@ -89,6 +95,9 @@ public class PlayerData
 
     //the last claim this player was in, that we know of
     public Claim lastClaim = null;
+
+    //siege
+    public SiegeData siegeData = null;
 
     //pvp
     public long lastPvpTimestamp = 0;
@@ -111,11 +120,11 @@ public class PlayerData
     //message to send to player after he respawns
     String messageOnRespawn = null;
 
+    //player which a pet will be given to when it's right-clicked
+    OfflinePlayer petGiveawayRecipient = null;
+
     //timestamp for last "you're building outside your land claims" message
     Long buildWarningTimestamp = null;
-
-    //timestamp for last warning when placing TNT on explosion protected claim
-    Long explosivesWarningTimestamp = null;
 
     //spot where a player can't talk, used to mute new players until they've moved a little
     //this is an anti-bot strategy.
@@ -274,22 +283,12 @@ public class PlayerData
                 Claim claim = dataStore.claims.get(i);
                 if (!claim.inDataStore)
                 {
-                    Claim remove = dataStore.claims.remove(i--);
-                    dataStore.claimIDMap.remove(remove.getID());
-                    for (Claim child : remove.children)
-                    {
-                        dataStore.claimIDMap.remove(child.getID());
-                    }
+                    dataStore.claims.remove(i--);
                     continue;
                 }
                 if (playerID.equals(claim.ownerID))
                 {
                     this.claims.add(claim);
-                    dataStore.claimIDMap.put(claim.getID(), claim);
-                    for (Claim child : claim.children)
-                    {
-                        dataStore.claimIDMap.put(child.getID(), child);
-                    }
                     totalClaimsArea += claim.getArea();
                 }
             }
